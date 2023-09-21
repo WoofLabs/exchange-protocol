@@ -9,21 +9,25 @@ import "./libraries/WoofLibrary.sol";
 import "./libraries/SafeMath.sol";
 import "./interfaces/IERC20.sol";
 import "./interfaces/IWETH.sol";
+import "hardhat/console.sol";
 
 contract WoofRouter is IWoofRouter02 {
     using SafeMath for uint256;
 
     address public immutable override factory;
     address public immutable override WETH;
+    address public immutable deployer;
+    uint8 public immutable deployerFeeDividValue = 200; // 0.5%
 
     modifier ensure(uint256 deadline) {
         require(deadline >= block.timestamp, "WoofRouter: EXPIRED");
         _;
     }
 
-    constructor(address _factory, address _WETH) public {
+    constructor(address _factory, address _WETH, address _deployer) public {
         factory = _factory;
         WETH = _WETH;
+        deployer = _deployer;
     }
 
     receive() external payable {
@@ -248,6 +252,7 @@ contract WoofRouter is IWoofRouter02 {
         address[] memory path,
         address _to
     ) internal virtual {
+
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             (address token0, ) = WoofLibrary.sortTokens(input, output);
@@ -259,6 +264,21 @@ contract WoofRouter is IWoofRouter02 {
         }
     }
 
+    function transferFeeToDeployer(address token, address sender, uint256 amount) private {
+        TransferHelper.safeTransferFrom(
+            token,
+            sender,
+            address(this),
+            amount
+        );
+        TransferHelper.safeTransfer(token, deployer, amount);
+    }
+
+    function transferETHFeeToDeployer(uint256 amount) private {
+        IWETH(WETH).deposit{value: amount}();
+        assert(IWETH(WETH).transfer(deployer, amount));
+    }
+
     function swapExactTokensForTokens(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -268,12 +288,17 @@ contract WoofRouter is IWoofRouter02 {
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
         amounts = WoofLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "WoofRouter: INSUFFICIENT_OUTPUT_AMOUNT");
+        transferFeeToDeployer(path[0], msg.sender, amounts[0] / deployerFeeDividValue);
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
             WoofLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
+            amounts[0] - amounts[0] / deployerFeeDividValue
         );
+
+        // get except fee amounts
+        amounts[0] = amounts[0] - amounts[0] / deployerFeeDividValue;
+        amounts[amounts.length - 1] = amounts[amounts.length - 1] - amounts[amounts.length - 1] / deployerFeeDividValue;
         _swap(amounts, path, to);
     }
 
@@ -286,12 +311,17 @@ contract WoofRouter is IWoofRouter02 {
     ) external virtual override ensure(deadline) returns (uint256[] memory amounts) {
         amounts = WoofLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, "WoofRouter: EXCESSIVE_INPUT_AMOUNT");
+        transferFeeToDeployer(path[0], msg.sender, amounts[0] / deployerFeeDividValue);
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
             WoofLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
+            amounts[0] - amounts[0] / deployerFeeDividValue
         );
+
+        // get except fee amounts
+        amounts[0] = amounts[0] - amounts[0] / deployerFeeDividValue;
+        amounts[amounts.length - 1] = amounts[amounts.length - 1] - amounts[amounts.length - 1] / deployerFeeDividValue;
         _swap(amounts, path, to);
     }
 
@@ -304,8 +334,13 @@ contract WoofRouter is IWoofRouter02 {
         require(path[0] == WETH, "WoofRouter: INVALID_PATH");
         amounts = WoofLibrary.getAmountsOut(factory, msg.value, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "WoofRouter: INSUFFICIENT_OUTPUT_AMOUNT");
-        IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(WoofLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+        transferETHFeeToDeployer(amounts[0]/deployerFeeDividValue);
+        IWETH(WETH).deposit{value: amounts[0] - amounts[0]/deployerFeeDividValue}();
+        assert(IWETH(WETH).transfer(WoofLibrary.pairFor(factory, path[0], path[1]), amounts[0] - amounts[0]/deployerFeeDividValue));
+        
+        // get except fee amounts
+        amounts[0] = amounts[0] - amounts[0] / deployerFeeDividValue;
+        amounts[amounts.length - 1] = amounts[amounts.length - 1] - amounts[amounts.length - 1] / deployerFeeDividValue;
         _swap(amounts, path, to);
     }
 
@@ -319,12 +354,17 @@ contract WoofRouter is IWoofRouter02 {
         require(path[path.length - 1] == WETH, "WoofRouter: INVALID_PATH");
         amounts = WoofLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, "WoofRouter: EXCESSIVE_INPUT_AMOUNT");
+        transferFeeToDeployer(path[0], msg.sender, amounts[0] / deployerFeeDividValue);
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
             WoofLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
+            amounts[0] - amounts[0] / deployerFeeDividValue
         );
+
+        // get except fee amounts
+        amounts[0] = amounts[0] - amounts[0] / deployerFeeDividValue;
+        amounts[amounts.length - 1] = amounts[amounts.length - 1] - amounts[amounts.length - 1] / deployerFeeDividValue;
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
@@ -340,12 +380,17 @@ contract WoofRouter is IWoofRouter02 {
         require(path[path.length - 1] == WETH, "WoofRouter: INVALID_PATH");
         amounts = WoofLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, "WoofRouter: INSUFFICIENT_OUTPUT_AMOUNT");
+        transferFeeToDeployer(path[0], msg.sender, amounts[0] / deployerFeeDividValue);
         TransferHelper.safeTransferFrom(
             path[0],
             msg.sender,
             WoofLibrary.pairFor(factory, path[0], path[1]),
-            amounts[0]
+            amounts[0] - amounts[0] / deployerFeeDividValue
         );
+        
+        // get except fee amounts
+        amounts[0] = amounts[0] - amounts[0] / deployerFeeDividValue;
+        amounts[amounts.length - 1] = amounts[amounts.length - 1] - amounts[amounts.length - 1] / deployerFeeDividValue;
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
@@ -360,11 +405,16 @@ contract WoofRouter is IWoofRouter02 {
         require(path[0] == WETH, "WoofRouter: INVALID_PATH");
         amounts = WoofLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= msg.value, "WoofRouter: EXCESSIVE_INPUT_AMOUNT");
-        IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(WoofLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+        transferETHFeeToDeployer(amounts[0]/deployerFeeDividValue);
+        IWETH(WETH).deposit{value: amounts[0] - amounts[0]/deployerFeeDividValue}();
+        assert(IWETH(WETH).transfer(WoofLibrary.pairFor(factory, path[0], path[1]), amounts[0] - amounts[0]/deployerFeeDividValue));
+    
+        // get except fee amounts
+        amounts[0] = amounts[0] - amounts[0] / deployerFeeDividValue;
+        amounts[amounts.length - 1] = amounts[amounts.length - 1] - amounts[amounts.length - 1] / deployerFeeDividValue;
         _swap(amounts, path, to);
         // refund dust eth, if any
-        if (msg.value > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]);
+        if (msg.value > amounts[0] + amounts[0] / deployerFeeDividValue) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0] - amounts[0] / deployerFeeDividValue);
     }
 
     // **** SWAP (supporting fee-on-transfer tokens) ****

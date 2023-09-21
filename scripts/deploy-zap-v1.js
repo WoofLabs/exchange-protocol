@@ -21,12 +21,6 @@ const main = async () => {
       throw new Error("Missing private key, refer to README 'Deployment' section");
     }
   }
-  console.log('checking information = ', {
-    networkName,
-    address: deployer.address,
-    Mainnet: process.env.KEY_MAINNET,
-    Testnet: process.env.KEY_TESTNET
-  })
 
   if (!config.WoofRouter[networkName] || config.WoofRouter[networkName] === ethers.constants.AddressZero) {
     throw new Error("Missing router address, refer to README 'Deployment' section");

@@ -13,10 +13,10 @@ async function main() {
     const woofFactory = await WoofFactory.deploy(deployer.address);
     await woofFactory.deployed();
     console.log("woofFactory contract deployed to:", woofFactory.address);
-    console.log("INIT_CODE_PAIR_HASH = ", await woofFactory.INIT_CODE_PAIR_HASH());
+    // console.log("INIT_CODE_PAIR_HASH = ", await woofFactory.INIT_CODE_PAIR_HASH());
 
     const WoofRouter = await hre.ethers.getContractFactory("WoofRouter");
-    const woofRouter = await WoofRouter.deploy(woofFactory.address, wcoreAddress);
+    const woofRouter = await WoofRouter.deploy(woofFactory.address, wcoreAddress, deployer.address);
     await woofRouter.deployed();
     console.log("woofRouter contract deployed to:", woofRouter.address);
 
@@ -28,32 +28,32 @@ async function main() {
     const woofAbi = (await woofArtifact).abi
     const WOOF = new hre.ethers.Contract(woofAddress, woofAbi, deployer)
 
-    const amountWCORE = 5
-    const amountWOOF = 5
+    const amountWCORE = 3
+    const amountWOOF = 3
 
     tx = await WCORE.approve(woofRouter.address, ethers.utils.parseUnits(String(amountWCORE), 18));
     await tx.wait();
-    console.log('approve WCORE = ')
+    console.log('approve WCORE!')
 
     tx = await WOOF.approve(woofRouter.address, ethers.utils.parseUnits(String(amountWOOF), 18));
     await tx.wait();
-    console.log('approve WOOF = ')
+    console.log('approve WOOF!')
 
-    tx = await woofRouter.addLiquidity(
-        wcoreAddress,
-        woofAddress,
-        ethers.utils.parseUnits(String(amountWCORE), 18),
-        ethers.utils.parseUnits(String(amountWOOF), 18),
-        0,
-        0,
-        deployer.address,
-        "111111111111111111111"
-    );
-    await tx.wait();
-    console.log('add liquidity')
+    // tx = await woofRouter.addLiquidity(
+    //     wcoreAddress,
+    //     woofAddress,
+    //     ethers.utils.parseUnits(String(amountWCORE), 18),
+    //     ethers.utils.parseUnits(String(amountWOOF), 18),
+    //     0,
+    //     0,
+    //     deployer.address,
+    //     "111111111111111111111"
+    // );
+    // await tx.wait();
+    // console.log('add liquidity')
 
-    const woofLP = await woofFactory.getPair(wcoreAddress, woofAddress)
-    console.log('woof LP = ', woofLP)
+    // const woofLP = await woofFactory.getPair(wcoreAddress, woofAddress)
+    // console.log('woof LP = ', woofLP)
 }
 
 main().catch((error) => {
